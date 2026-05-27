@@ -1,0 +1,265 @@
+const Ticket = require("../models/Ticket");
+const Comment = require("../models/Comment");
+const AppError = require("../utils/errorUtils");
+const asyncHandler = require("../utils/asyncHandler");
+const { sendSuccess } = require("../utils/responseHelper");
+const { analyzeTicket } = require("../services/geminiService");
+
+// @desc    Create a new support ticket
+// @route   POST /api/tickets
+// @access  Private (All authenticated users)
+const createTicket = asyncHandler(async (req, res, next) => {
+  const { title, description, category, priority } = req.body;
+
+  // Process uploaded file paths if present
+  let attachmentPaths = [];
+  if (req.files && req.files.length > 0) {
+    attachmentPaths = req.files.map((file) => file.path || `/uploads/${file.filename}`);
+  } else if (req.file) {
+    attachmentPaths = [req.file.path || `/uploads/${req.file.filename}`];
+  }
+
+  // Trigger Gemini AI Analysis
+  const aiResult = await analyzeTicket(title, description);
+
+  // Map fields, allowing user overrides for category/priority, otherwise falling back to AI predictions
+  const ticketData = {
+    title,
+    description,
+    category: category || aiResult.category,
+    priority: priority || aiResult.priority,
+    aiSummary: aiResult.summary,
+    aiSuggestion: aiResult.suggestion,
+    createdBy: req.user._id,
+    attachments: attachmentPaths,
+  };
+
+  // Create ticket in database
+  const ticket = await Ticket.create(ticketData);
+
+  sendSuccess(res, "Ticket created successfully", ticket, 201);
+});
+
+// @desc    Get all tickets (Users get own, Admin/Support get all with filter/search/page)
+// @route   GET /api/tickets
+// @access  Private
+const getTickets = asyncHandler(async (req, res, next) => {
+  const { status, category, priority, search, page = 1, limit = 10 } = req.query;
+
+  // Initialize query filters
+  let query = {};
+
+  // Enforce role-based viewing boundaries
+  if (req.user.role === "user") {
+    query.createdBy = req.user._id;
+  }
+
+  // Filter conditions
+  if (status) query.status = status;
+  if (category) query.category = category;
+  if (priority) query.priority = priority;
+
+  // Search keyword check (looks in title or description)
+  if (search) {
+    query.$or = [
+      { title: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  // Calculate pagination parameters
+  const pageNum = parseInt(page, 10);
+  const limitNum = parseInt(limit, 10);
+  const skipNum = (pageNum - 1) * limitNum;
+
+  // Execute database query
+  const tickets = await Ticket.find(query)
+    .populate("createdBy", "name email role avatar")
+    .populate("assignedTo", "name email role avatar")
+    .sort({ createdAt: -1 })
+    .skip(skipNum)
+    .limit(limitNum);
+
+  const totalTickets = await Ticket.countDocuments(query);
+
+  sendSuccess(res, "Tickets retrieved successfully", {
+    tickets,
+    pagination: {
+      total: totalTickets,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(totalTickets / limitNum),
+    },
+  });
+});
+
+// @desc    Get a single ticket by ID
+// @route   GET /api/tickets/:id
+// @access  Private
+const getTicketById = asyncHandler(async (req, res, next) => {
+  const ticket = await Ticket.findById(req.params.id)
+    .populate("createdBy", "name email role avatar")
+    .populate("assignedTo", "name email role avatar");
+
+  if (!ticket) {
+    return next(new AppError("Ticket not found", 404));
+  }
+
+  // Enforce resource protection boundaries
+  if (
+    req.user.role === "user" &&
+    ticket.createdBy._id.toString() !== req.user._id.toString()
+  ) {
+    return next(new AppError("Not authorized to view this ticket", 403));
+  }
+
+  sendSuccess(res, "Ticket retrieved successfully", ticket);
+});
+
+// @desc    Update ticket details (status, priority, assignment)
+// @route   PUT /api/tickets/:id
+// @access  Private (Admin & Support Staff only)
+const updateTicket = asyncHandler(async (req, res, next) => {
+  // Only Admin or Support can update tickets
+  if (req.user.role === "user") {
+    return next(new AppError("Not authorized to modify tickets", 403));
+  }
+
+  const { status, priority, assignedTo } = req.body;
+  const ticket = await Ticket.findById(req.params.id);
+
+  if (!ticket) {
+    return next(new AppError("Ticket not found", 404));
+  }
+
+  // Apply updates
+  if (status) {
+    ticket.status = status;
+    if (status === "resolved") {
+      ticket.resolvedAt = new Date();
+    }
+  }
+  if (priority) {
+    ticket.priority = priority;
+  }
+  if (assignedTo !== undefined) {
+    // If empty string is passed, unassign the ticket
+    ticket.assignedTo = assignedTo === "" ? null : assignedTo;
+  }
+
+  const updatedTicket = await ticket.save();
+
+  // Populate references for return
+  await updatedTicket.populate([
+    { path: "createdBy", select: "name email role avatar" },
+    { path: "assignedTo", select: "name email role avatar" }
+  ]);
+
+  sendSuccess(res, "Ticket updated successfully", updatedTicket);
+});
+
+// @desc    Delete a ticket (Hard delete)
+// @route   DELETE /api/tickets/:id
+// @access  Private (Admin only)
+const deleteTicket = asyncHandler(async (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return next(new AppError("Only administrators are permitted to delete tickets", 403));
+  }
+
+  const ticket = await Ticket.findById(req.params.id);
+  if (!ticket) {
+    return next(new AppError("Ticket not found", 404));
+  }
+
+  // Remove the ticket
+  await Ticket.findByIdAndDelete(req.params.id);
+
+  // Delete all comments associated with this ticket
+  await Comment.deleteMany({ ticketId: req.params.id });
+
+  sendSuccess(res, "Ticket and its conversation deleted successfully", null);
+});
+
+// @desc    Add a comment/reply to a ticket
+// @route   POST /api/tickets/:id/comments
+// @access  Private
+const addComment = asyncHandler(async (req, res, next) => {
+  const { message } = req.body;
+  const ticket = await Ticket.findById(req.params.id);
+
+  if (!ticket) {
+    return next(new AppError("Ticket not found", 404));
+  }
+
+  // Verify access authorization
+  if (
+    req.user.role === "user" &&
+    ticket.createdBy.toString() !== req.user._id.toString()
+  ) {
+    return next(new AppError("Not authorized to reply to this ticket", 403));
+  }
+
+  // Process attachments for comments
+  let commentAttachments = [];
+  if (req.files && req.files.length > 0) {
+    commentAttachments = req.files.map((file) => file.path || `/uploads/${file.filename}`);
+  } else if (req.file) {
+    commentAttachments = [req.file.path || `/uploads/${req.file.filename}`];
+  }
+
+  const comment = await Comment.create({
+    ticketId: req.params.id,
+    userId: req.user._id,
+    message,
+    attachments: commentAttachments,
+  });
+
+  // Populate author details
+  await comment.populate("userId", "name email role avatar");
+
+  // Automatically mark ticket as 'in_progress' if support replies, or update timestamps
+  if (req.user.role !== "user" && ticket.status === "pending") {
+    ticket.status = "in_progress";
+    await ticket.save();
+  } else {
+    // Save ticket anyway to update 'updatedAt' field
+    await ticket.save();
+  }
+
+  sendSuccess(res, "Comment added successfully", comment, 201);
+});
+
+// @desc    Get comment thread for a ticket
+// @route   GET /api/tickets/:id/comments
+// @access  Private
+const getComments = asyncHandler(async (req, res, next) => {
+  const ticket = await Ticket.findById(req.params.id);
+
+  if (!ticket) {
+    return next(new AppError("Ticket not found", 404));
+  }
+
+  // Verify access authorization
+  if (
+    req.user.role === "user" &&
+    ticket.createdBy.toString() !== req.user._id.toString()
+  ) {
+    return next(new AppError("Not authorized to view this ticket's comments", 403));
+  }
+
+  const comments = await Comment.find({ ticketId: req.params.id })
+    .populate("userId", "name email role avatar")
+    .sort({ createdAt: 1 }); // Oldest first (chronological thread)
+
+  sendSuccess(res, "Comments retrieved successfully", comments);
+});
+
+module.exports = {
+  createTicket,
+  getTickets,
+  getTicketById,
+  updateTicket,
+  deleteTicket,
+  addComment,
+  getComments,
+};

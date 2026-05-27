@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const path = require("path");
 
 const authRoutes = require("./routes/authRoutes");
 const ticketRoutes = require("./routes/ticketRoutes");
@@ -16,6 +17,9 @@ app.use(cors());
 app.use(express.json());
 
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploads folder statically
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
