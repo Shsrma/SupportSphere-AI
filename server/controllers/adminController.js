@@ -8,12 +8,12 @@ const { sendSuccess } = require("../utils/responseHelper");
 // @route   GET /api/admin/staff
 // @access  Private (Admin & Support only)
 const getStaffMembers = asyncHandler(async (req, res, next) => {
-  if (req.user.role === "user") {
+  if (["📁 verified_user", "🔹 guest_user"].includes(req.user.role)) {
     return next(new AppError("Not authorized to view staff list", 403));
   }
 
   const staff = await User.find({
-    role: { $in: ["admin", "support"] },
+    role: { $in: ["⚡ god_admin", "👑 super_admin", "🛡️ admin", "⚜️ support_manager", "⚙️ support_agent", "🤖 ai_reviewer", "📊 analytics_manager", "📁 organization_manager"] },
     status: "active",
   }).select("name email role");
 
@@ -24,7 +24,7 @@ const getStaffMembers = asyncHandler(async (req, res, next) => {
 // @route   GET /api/admin/analytics
 // @access  Private (Admin only)
 const getAnalytics = asyncHandler(async (req, res, next) => {
-  if (req.user.role !== "admin") {
+  if (!["⚡ god_admin", "👑 super_admin", "🛡️ admin", "📊 analytics_manager"].includes(req.user.role)) {
     return next(new AppError("Not authorized to view system analytics", 403));
   }
 
@@ -119,7 +119,71 @@ const getAnalytics = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Update a user's role (Promote / Demote)
+// @route   PUT /api/admin/users/:id/role
+// @access  Private (Admin only)
+const updateUserRole = asyncHandler(async (req, res, next) => {
+  const { role } = req.body;
+
+  if (!["⚡ god_admin", "👑 super_admin", "🛡️ admin"].includes(req.user.role)) {
+    return next(new AppError("Only administrators can update user roles", 403));
+  }
+
+  const validRoles = [
+    "⚡ god_admin",
+    "👑 super_admin",
+    "🛡️ admin",
+    "⚜️ support_manager",
+    "⚙️ support_agent",
+    "🤖 ai_reviewer",
+    "📊 analytics_manager",
+    "📁 organization_manager",
+    "📁 verified_user",
+    "🔹 guest_user"
+  ];
+
+  if (!role || !validRoles.includes(role)) {
+    return next(new AppError("Please provide a valid role with symbol", 400));
+  }
+
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    return next(new AppError("User not found", 404));
+  }
+
+  // Prevent admin from demoting themselves by accident
+  if (user._id.toString() === req.user._id.toString() && !["⚡ god_admin", "👑 super_admin", "🛡️ admin"].includes(role)) {
+    return next(new AppError("You cannot demote yourself from the admin role", 400));
+  }
+
+  // If the target is the God Admin, enforce strict protection rules
+  if (user.role === "⚡ god_admin") {
+    if (req.user.role !== "⚡ god_admin") {
+      return next(new AppError("Only the God Admin can modify God Admin permissions or roles", 403));
+    }
+    
+    // Even if they attempt to change their own role, they still remain God Admin
+    user.role = "⚡ god_admin";
+  } else {
+    // If promoting someone to God Admin, only the current God Admin can do it
+    if (role === "⚡ god_admin" && req.user.role !== "⚡ god_admin") {
+      return next(new AppError("Only the God Admin can create another God Admin", 403));
+    }
+    user.role = role;
+  }
+
+  await user.save();
+
+  sendSuccess(res, `User role updated successfully`, {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  });
+});
+
 module.exports = {
   getStaffMembers,
   getAnalytics,
+  updateUserRole,
 };

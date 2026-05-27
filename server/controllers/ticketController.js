@@ -50,7 +50,7 @@ const getTickets = asyncHandler(async (req, res, next) => {
   let query = {};
 
   // Enforce role-based viewing boundaries
-  if (req.user.role === "user") {
+  if (req.user.role === "📁 verified_user" || req.user.role === "🔹 guest_user") {
     query.createdBy = req.user._id;
   }
 
@@ -107,7 +107,7 @@ const getTicketById = asyncHandler(async (req, res, next) => {
 
   // Enforce resource protection boundaries
   if (
-    req.user.role === "user" &&
+    ["📁 verified_user", "🔹 guest_user"].includes(req.user.role) &&
     ticket.createdBy._id.toString() !== req.user._id.toString()
   ) {
     return next(new AppError("Not authorized to view this ticket", 403));
@@ -121,7 +121,7 @@ const getTicketById = asyncHandler(async (req, res, next) => {
 // @access  Private (Admin & Support Staff only)
 const updateTicket = asyncHandler(async (req, res, next) => {
   // Only Admin or Support can update tickets
-  if (req.user.role === "user") {
+  if (["📁 verified_user", "🔹 guest_user"].includes(req.user.role)) {
     return next(new AppError("Not authorized to modify tickets", 403));
   }
 
@@ -162,7 +162,7 @@ const updateTicket = asyncHandler(async (req, res, next) => {
 // @route   DELETE /api/tickets/:id
 // @access  Private (Admin only)
 const deleteTicket = asyncHandler(async (req, res, next) => {
-  if (req.user.role !== "admin") {
+  if (!["⚡ god_admin", "👑 super_admin", "🛡️ admin"].includes(req.user.role)) {
     return next(new AppError("Only administrators are permitted to delete tickets", 403));
   }
 
@@ -193,7 +193,7 @@ const addComment = asyncHandler(async (req, res, next) => {
 
   // Verify access authorization
   if (
-    req.user.role === "user" &&
+    ["📁 verified_user", "🔹 guest_user"].includes(req.user.role) &&
     ticket.createdBy.toString() !== req.user._id.toString()
   ) {
     return next(new AppError("Not authorized to reply to this ticket", 403));
@@ -218,7 +218,7 @@ const addComment = asyncHandler(async (req, res, next) => {
   await comment.populate("userId", "name email role avatar");
 
   // Automatically mark ticket as 'in_progress' if support replies, or update timestamps
-  if (req.user.role !== "user" && ticket.status === "pending") {
+  if (!["📁 verified_user", "🔹 guest_user"].includes(req.user.role) && ticket.status === "pending") {
     ticket.status = "in_progress";
     await ticket.save();
   } else {
@@ -241,7 +241,7 @@ const getComments = asyncHandler(async (req, res, next) => {
 
   // Verify access authorization
   if (
-    req.user.role === "user" &&
+    ["📁 verified_user", "🔹 guest_user"].includes(req.user.role) &&
     ticket.createdBy.toString() !== req.user._id.toString()
   ) {
     return next(new AppError("Not authorized to view this ticket's comments", 403));

@@ -49,7 +49,7 @@ const AppRoutes = () => {
         <Route
           path="/admin/analytics"
           element={
-            <ProtectedRoute allowedRoles={["admin"]}>
+            <ProtectedRoute allowedRoles={["👑 super_admin", "🛡️ admin", "📊 analytics_manager"]}>
               <Analytics />
             </ProtectedRoute>
           }
@@ -57,7 +57,7 @@ const AppRoutes = () => {
         <Route
           path="/admin/reports"
           element={
-            <ProtectedRoute allowedRoles={["admin"]}>
+            <ProtectedRoute allowedRoles={["👑 super_admin", "🛡️ admin", "📊 analytics_manager"]}>
               <Reports />
             </ProtectedRoute>
           }

@@ -107,7 +107,7 @@ const MainLayout = () => {
       <footer className="border-t border-[#334155] bg-[#0A0F1D]/80 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-sm text-[#CBD5E1]/60">
-            © 2026 Ankur Sharma. All rights reserved.
+            © 2026 SupportSphere AI. All rights reserved to Ankur Sharma.
           </div>
           <div className="flex gap-6 text-sm text-[#CBD5E1]/60">
             <Link to="/#privacy" className="hover:text-white transition-colors duration-200">

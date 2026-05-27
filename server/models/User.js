@@ -28,10 +28,21 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: {
-        values: ["user", "admin", "support"],
+        values: [
+          "⚡ god_admin",
+          "👑 super_admin",
+          "🛡️ admin",
+          "⚜️ support_manager",
+          "⚙️ support_agent",
+          "🤖 ai_reviewer",
+          "📊 analytics_manager",
+          "📁 organization_manager",
+          "📁 verified_user",
+          "🔹 guest_user"
+        ],
         message: "{VALUE} is not a valid role",
       },
-      default: "user",
+      default: "📁 verified_user",
     },
     avatar: {
       type: String,
@@ -64,18 +75,17 @@ const userSchema = new mongoose.Schema(
 );
 
 // Mongoose Pre-save middleware to hash passwords
-userSchema.pre("save", async function (next) {
+userSchema.pre("save", async function () {
   // Only hash password if it has been modified (or is new)
   if (!this.isModified("password")) {
-    return next();
+    return;
   }
 
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
   } catch (error) {
-    next(error);
+    throw error;
   }
 });
 

