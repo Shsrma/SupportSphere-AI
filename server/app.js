@@ -1,0 +1,44 @@
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+
+const authRoutes = require("./routes/authRoutes");
+const ticketRoutes = require("./routes/ticketRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+
+const app = express();
+
+app.use(helmet());
+
+app.use(cors());
+
+app.use(express.json());
+
+app.use(express.urlencoded({ extended: true }));
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
+});
+
+app.use(limiter);
+
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "API Running"
+  });
+});
+
+app.use("/api/auth", authRoutes);
+
+app.use("/api/tickets", ticketRoutes);
+
+app.use("/api/admin", adminRoutes);
+
+// Centralized Error Handler Middleware
+const errorMiddleware = require("./middleware/errorMiddleware");
+app.use(errorMiddleware);
+
+module.exports = app;
