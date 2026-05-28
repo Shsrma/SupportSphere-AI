@@ -14,6 +14,7 @@ import {
   User,
   Bell,
   ChevronDown,
+  Plus,
 } from "lucide-react";
 
 const DashboardLayout = () => {
@@ -35,6 +36,12 @@ const DashboardLayout = () => {
       path: "/dashboard",
       icon: LayoutDashboard,
       roles: ["user", "support", "admin"],
+    },
+    {
+      name: "Raise a Ticket",
+      path: "/tickets/create",
+      icon: Plus,
+      roles: ["user"],
     },
     {
       name: "My Complaints",
@@ -68,8 +75,12 @@ const DashboardLayout = () => {
     },
   ];
 
+  let userCategory = "user";
+  if (isAdmin) userCategory = "admin";
+  else if (isSupport) userCategory = "support";
+
   const filteredMenuItems = menuItems.filter((item) =>
-    item.roles.includes(user?.role)
+    item.roles.includes(userCategory)
   );
 
   const getInitials = (name) => {

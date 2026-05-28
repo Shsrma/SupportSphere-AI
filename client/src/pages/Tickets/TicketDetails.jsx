@@ -5,7 +5,7 @@ import { AuthContext } from "../../context/AuthContext";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
 import { 
-  ArrowLeft, Clock, AlertTriangle, CheckCircle, User, Calendar, MessageSquare, Send, Sparkles, UserCheck, Trash2, Loader2 
+  ArrowLeft, Clock, AlertTriangle, CheckCircle, User, Calendar, MessageSquare, Send, Sparkles, UserCheck, Trash2, Loader2, Users, X 
 } from "lucide-react";
 
 const TicketDetails = () => {
@@ -20,6 +20,72 @@ const TicketDetails = () => {
   const [loading, setLoading] = useState(true);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [updatingTicket, setUpdatingTicket] = useState(false);
+
+  // Inline editing states
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editCategory, setEditCategory] = useState("other");
+  const [editPriority, setEditPriority] = useState("medium");
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editTitle.trim() || !editDescription.trim()) return;
+
+    setUpdatingTicket(true);
+    try {
+      const response = await api.put(`/tickets/${id}`, {
+        title: editTitle,
+        description: editDescription,
+        category: editCategory,
+        priority: editPriority,
+      });
+
+      if (response.data.success) {
+        setTicket(response.data.data);
+        setIsEditing(false);
+        toast.success("Ticket details updated successfully.");
+      }
+    } catch (error) {
+      toast.error("Failed to update ticket.");
+    } finally {
+      setUpdatingTicket(false);
+    }
+  };
+  const [collabEmail, setCollabEmail] = useState("");
+  const [addingCollab, setAddingCollab] = useState(false);
+
+  const handleAddCollaborator = async (e) => {
+    e.preventDefault();
+    if (!collabEmail.trim()) return;
+
+    setAddingCollab(true);
+    try {
+      const response = await api.post(`/tickets/${id}/collaborators`, { email: collabEmail });
+      if (response.data.success) {
+        setTicket(response.data.data);
+        setCollabEmail("");
+        toast.success("Collaborator added successfully.");
+      }
+    } catch (error) {
+      const msg = error.response?.data?.message || "Failed to add collaborator.";
+      toast.error(msg);
+    } finally {
+      setAddingCollab(false);
+    }
+  };
+
+  const handleRemoveCollaborator = async (userId) => {
+    try {
+      const response = await api.delete(`/tickets/${id}/collaborators/${userId}`);
+      if (response.data.success) {
+        setTicket(response.data.data);
+        toast.success("Collaborator removed.");
+      }
+    } catch (error) {
+      toast.error("Failed to remove collaborator.");
+    }
+  };
 
   // Fetch ticket details, comments, and staff list (if admin/support)
   const fetchData = async () => {
@@ -141,15 +207,31 @@ const TicketDetails = () => {
           </div>
         </div>
 
-        {isAdmin && (
-          <button
-            onClick={handleDeleteTicket}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 border border-red-500/30 hover:border-red-500 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-200 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete Ticket
-          </button>
-        )}
+        <div className="flex gap-2">
+          {(ticket.createdBy?._id === user?.id || isAdmin) && (
+            <button
+              onClick={() => {
+                setEditTitle(ticket.title);
+                setEditDescription(ticket.description);
+                setEditCategory(ticket.category);
+                setEditPriority(ticket.priority);
+                setIsEditing(!isEditing);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 border border-blue-500/30 hover:border-blue-500 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-200 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer animate-fade-in"
+            >
+              {isEditing ? "Cancel Edit" : "Edit Ticket"}
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={handleDeleteTicket}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 border border-red-500/30 hover:border-red-500 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-200 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Ticket
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stepper Progress bar */}
@@ -192,29 +274,113 @@ const TicketDetails = () => {
         {/* Left Column (Details, AI assistance, Chat feed) */}
         <div className="lg:col-span-2 space-y-6">
           
-          {/* Ticket Description */}
-          <div className="bg-[#1E293B]/40 border border-[#334155]/60 rounded-2xl p-6 space-y-4">
-            <h3 className="text-sm font-semibold uppercase text-white tracking-wider">Complaint Description</h3>
-            <p className="text-sm text-[#CBD5E1] leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
-            {ticket.attachments && ticket.attachments.length > 0 && (
-              <div className="border-t border-[#334155]/40 pt-4 space-y-2">
-                <span className="text-xs font-semibold text-[#CBD5E1]/60 uppercase tracking-wider block">Attachments</span>
-                <div className="flex flex-wrap gap-2">
-                  {ticket.attachments.map((url, i) => (
-                    <a
-                      key={i}
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-[#0F172A] border border-[#334155] rounded-lg text-xs text-blue-400 hover:text-blue-300 truncate max-w-[200px]"
+          {/* Ticket Description or Edit Form */}
+          {isEditing ? (
+            <form onSubmit={handleSaveEdit} className="bg-[#1E293B]/40 border border-[#334155]/60 rounded-2xl p-6 space-y-4 shadow-xl">
+              <h3 className="text-sm font-semibold uppercase text-white tracking-wider">Edit Complaint Details</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-semibold text-[#CBD5E1]/60 uppercase tracking-wider mb-1">Title</label>
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#0F172A]/80 border border-[#334155] rounded-xl text-xs text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-[#CBD5E1]/60 uppercase tracking-wider mb-1">Category</label>
+                    <select
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#0F172A]/80 border border-[#334155] rounded-xl text-xs text-white focus:outline-none focus:border-[#38BDF8] cursor-pointer"
                     >
-                      Attachment_{i + 1}
-                    </a>
-                  ))}
+                      <option value="technical">Technical / Infrastructure</option>
+                      <option value="hostel">Hostel / Accommodation</option>
+                      <option value="academic">Academic / Education</option>
+                      <option value="administrative">Administrative / Docs</option>
+                      <option value="security">Security / Safety</option>
+                      <option value="other">Other Issues</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-[#CBD5E1]/60 uppercase tracking-wider mb-1">Priority</label>
+                    <select
+                      value={editPriority}
+                      onChange={(e) => setEditPriority(e.target.value)}
+                      className="w-full px-3 py-2 bg-[#0F172A]/80 border border-[#334155] rounded-xl text-xs text-white focus:outline-none focus:border-[#38BDF8] cursor-pointer"
+                    >
+                      <option value="low">Low (General Query)</option>
+                      <option value="medium">Medium (Needs attention)</option>
+                      <option value="high">High (Hindering work)</option>
+                      <option value="critical">Critical (Immediate shutdown)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-[#CBD5E1]/60 uppercase tracking-wider mb-1">Description</label>
+                  <textarea
+                    required
+                    rows={5}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#0F172A]/80 border border-[#334155] rounded-xl text-xs text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 resize-y"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(false)}
+                    className="px-4 py-2 border border-[#334155] hover:bg-[#1E293B] text-xs font-semibold rounded-lg text-white transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updatingTicket}
+                    className="px-4 py-2 bg-gradient-to-r from-[#2563EB] to-[#7C3AED] text-xs font-semibold rounded-lg text-white shadow-lg transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {updatingTicket ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Changes"
+                    )}
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
+            </form>
+          ) : (
+            <div className="bg-[#1E293B]/40 border border-[#334155]/60 rounded-2xl p-6 space-y-4">
+              <h3 className="text-sm font-semibold uppercase text-white tracking-wider">Complaint Description</h3>
+              <p className="text-sm text-[#CBD5E1] leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
+              {ticket.attachments && ticket.attachments.length > 0 && (
+                <div className="border-t border-[#334155]/40 pt-4 space-y-2">
+                  <span className="text-xs font-semibold text-[#CBD5E1]/60 uppercase tracking-wider block">Attachments</span>
+                  <div className="flex flex-wrap gap-2">
+                    {ticket.attachments.map((url, i) => (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-[#0F172A] border border-[#334155] rounded-lg text-xs text-blue-400 hover:text-blue-300 truncate max-w-[200px]"
+                      >
+                        Attachment_{i + 1}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* AI Assistance Panel */}
           {(ticket.aiSummary || ticket.aiSuggestion) && (
@@ -409,6 +575,21 @@ const TicketDetails = () => {
                     <option value="resolved">Resolved</option>
                     <option value="closed">Closed</option>
                   </select>
+                ) : (ticket.createdBy?._id === user?.id || ticket.collaborators?.some(c => c._id === user?.id)) ? (
+                  <select
+                    value={ticket.status}
+                    onChange={(e) => handleUpdateField("status", e.target.value)}
+                    disabled={updatingTicket || ["resolved", "closed"].includes(ticket.status)}
+                    className="mt-1 block w-full px-2 py-1.5 bg-[#0F172A] border border-[#334155] rounded-lg text-xs text-white outline-none cursor-pointer disabled:opacity-50"
+                  >
+                    {!["resolved", "closed"].includes(ticket.status) && (
+                      <option value={ticket.status} disabled>
+                        {ticket.status === "pending" ? "Pending" : "In Progress"}
+                      </option>
+                    )}
+                    <option value="resolved">Resolved</option>
+                    <option value="closed">Closed</option>
+                  </select>
                 ) : (
                   <span className="text-sm font-semibold text-white capitalize mt-0.5">
                     {ticket.status.replace("_", " ")}
@@ -457,6 +638,74 @@ const TicketDetails = () => {
               </div>
             </div>
 
+          </div>
+
+          {/* Group Collaborators Card */}
+          <div className="bg-[#1E293B]/40 border border-[#334155]/60 rounded-2xl p-6 space-y-4 shadow-lg">
+            <h3 className="text-sm font-semibold uppercase text-white tracking-wider pb-2 border-b border-[#334155]/60 flex items-center gap-2">
+              <Users className="h-4 w-4 text-[#38BDF8]" />
+              Ticket Group / Collaborators
+            </h3>
+
+            {/* List current collaborators */}
+            <div className="space-y-3">
+              {(!ticket.collaborators || ticket.collaborators.length === 0) ? (
+                <p className="text-xs text-[#CBD5E1]/50 italic">No group members added yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {ticket.collaborators.map((collab) => {
+                    const canRemove = ticket.createdBy?._id === user?.id || isAdmin || isSupport;
+                    return (
+                      <div key={collab._id} className="flex items-center justify-between p-2 rounded-xl bg-[#0F172A]/50 border border-[#334155]/30">
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-xs font-semibold text-white truncate">{collab.name}</span>
+                          <span className="text-[10px] text-[#CBD5E1]/60 truncate">{collab.email}</span>
+                        </div>
+                        {canRemove && (
+                          <button
+                            onClick={() => handleRemoveCollaborator(collab._id)}
+                            className="p-1 rounded-md text-[#EF4444] hover:bg-[#EF4444]/10 transition-all cursor-pointer"
+                            title="Remove Collaborator"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Form to add collaborator (visible to creator, admin or support) */}
+            {(ticket.createdBy?._id === user?.id || isAdmin || isSupport) && (
+              <form onSubmit={handleAddCollaborator} className="border-t border-[#334155]/40 pt-4 space-y-2">
+                <label className="block text-[10px] font-semibold text-[#CBD5E1]/60 uppercase tracking-wider">
+                  Invite Member (Email)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    required
+                    value={collabEmail}
+                    onChange={(e) => setCollabEmail(e.target.value)}
+                    placeholder="user@example.com"
+                    className="flex-grow px-3 py-1.5 bg-[#0F172A]/80 border border-[#334155] rounded-xl text-xs text-white placeholder-[#94A3B8] focus:outline-none focus:border-[#38BDF8] transition-all"
+                  />
+                  <button
+                    type="submit"
+                    disabled={addingCollab || !collabEmail.trim()}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-semibold shadow transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                  >
+                    {addingCollab ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      "Add"
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
 
         </div>

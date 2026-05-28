@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { getStaffMembers, getAnalytics, updateUserRole } = require("../controllers/adminController");
+const { getStaffMembers, getAnalytics, updateUserRole, getAllUsers } = require("../controllers/adminController");
 const protect = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
 
@@ -20,6 +20,13 @@ router.get(
   "/analytics", 
   authorizeRoles("👑 super_admin", "🛡️ admin", "📊 analytics_manager"), 
   getAnalytics
+);
+
+// @route   GET /api/admin/users - Retrieve all users in the database
+router.get(
+  "/users",
+  authorizeRoles("👑 super_admin", "🛡️ admin"),
+  getAllUsers
 );
 
 // @route   PUT /api/admin/users/:id/role - Promote/demote a user

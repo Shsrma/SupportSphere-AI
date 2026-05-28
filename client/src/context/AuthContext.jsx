@@ -67,7 +67,12 @@ export const AuthProvider = ({ children }) => {
       // If 2FA challenge is required, return flag to trigger OTP view
       if (response.data.data.requires2FA) {
         setLoading(false);
-        return { success: true, requires2FA: true, email: response.data.data.email };
+        return { 
+          success: true, 
+          requires2FA: true, 
+          email: response.data.data.email,
+          phoneNumber: response.data.data.phoneNumber 
+        };
       }
 
       const { token, user: userData } = response.data.data;
@@ -245,7 +250,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Confirm Firebase SMS OTP code
-  const verifyFirebaseSms = async (smsCode) => {
+  const verifyFirebaseSms = async (smsCode, customEmail) => {
     setLoading(true);
     try {
       if (!confirmationResult) {
@@ -255,9 +260,9 @@ export const AuthProvider = ({ children }) => {
       const result = await confirmationResult.confirm(smsCode);
       const firebaseUser = result.user;
 
-      const name = "Verified Mobile User";
+      const name = firebaseUser.displayName || "Verified Mobile User";
       const phoneNumber = firebaseUser.phoneNumber;
-      const email = `phone_${phoneNumber.replace("+", "")}_${firebaseUser.uid}@supportsphere.ai`;
+      const email = customEmail || `phone_${phoneNumber.replace("+", "")}_${firebaseUser.uid}@supportsphere.ai`;
 
       // Call unified register/login with isOAuth flag
       const backendResponse = await register(name, email, "", phoneNumber, "", true);

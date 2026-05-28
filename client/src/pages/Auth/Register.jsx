@@ -5,6 +5,7 @@ import api from "../../services/api";
 import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
 import { User, Mail, Phone, Lock, Loader2, ArrowRight, ArrowLeft, HelpCircle, KeyRound, Eye, EyeOff, Sparkles } from "lucide-react";
+import { countryCodes } from "../../utils/countryCodes";
 
 const Register = () => {
   const { 
@@ -17,7 +18,10 @@ const Register = () => {
   } = useContext(AuthContext);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [credCountryCode, setCredCountryCode] = useState("+91");
+  const [credPhoneBody, setCredPhoneBody] = useState("");
+  const [otpCountryCode, setOtpCountryCode] = useState("+91");
+  const [otpPhoneBody, setOtpPhoneBody] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -97,13 +101,15 @@ const Register = () => {
   // Firebase SMS Handlers
   const handleSendMobileSms = async (e) => {
     e.preventDefault();
-    if (!phone) {
-      toast.error("Please enter your mobile number with country code (e.g. +919414407192).");
+    const cleanPhoneBody = otpPhoneBody.replace(/[\s\-\(\)]/g, "").replace(/^0+/, "");
+    if (!cleanPhoneBody) {
+      toast.error("Please enter your mobile number.");
       return;
     }
+    const fullPhone = otpCountryCode + cleanPhoneBody;
     setSmsSending(true);
     toast.loading("Sending SMS verification code...", { id: "sms-send" });
-    const result = await sendFirebaseSms(phone, "recaptcha-container");
+    const result = await sendFirebaseSms(fullPhone, "recaptcha-container");
     setSmsSending(false);
     if (result.success) {
       setSmsSent(true);
@@ -209,8 +215,11 @@ const Register = () => {
       return;
     }
 
+    const cleanPhoneBody = credPhoneBody.replace(/[\s\-\(\)]/g, "").replace(/^0+/, "");
+    const fullPhone = cleanPhoneBody ? (credCountryCode + cleanPhoneBody) : "";
+
     setIsSubmitting(true);
-    const result = await register(name, email, password, phone, otp);
+    const result = await register(name, email, password, fullPhone, otp);
     setIsSubmitting(false);
 
     if (result.success) {
@@ -300,19 +309,33 @@ const Register = () => {
                 <label className="block text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider mb-1.5" htmlFor="phone">
                   Phone Number (Optional)
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#CBD5E1]/60">
-                    <Phone className="h-4.5 w-4.5" />
-                  </div>
-                  <input
-                    id="phone"
-                    type="tel"
+                <div className="flex gap-2">
+                  <select
+                    value={credCountryCode}
+                    onChange={(e) => setCredCountryCode(e.target.value)}
                     disabled={otpSent}
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 text-sm disabled:opacity-50"
-                    placeholder="+1 (555) 000-0000"
-                  />
+                    className="bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white px-2 py-2.5 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none text-xs cursor-pointer max-w-[110px]"
+                  >
+                    {countryCodes.map((c) => (
+                      <option key={`cred-${c.code}-${c.name}`} value={c.code} className="bg-[#1E293B] text-white">
+                        {c.flag} {c.code}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="relative flex-grow">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#CBD5E1]/60">
+                      <Phone className="h-4.5 w-4.5" />
+                    </div>
+                    <input
+                      id="phone"
+                      type="tel"
+                      disabled={otpSent}
+                      value={credPhoneBody}
+                      onChange={(e) => setCredPhoneBody(e.target.value.replace(/\D/g, ""))}
+                      className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 text-sm disabled:opacity-50"
+                      placeholder="9414407192"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -491,22 +514,36 @@ const Register = () => {
               {/* Phone Field */}
               <div>
                 <label className="block text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider mb-1.5" htmlFor="mobile-phone">
-                  Mobile Number (with country code) *
+                  Mobile Number *
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#CBD5E1]/60">
-                    <Phone className="h-4.5 w-4.5" />
-                  </div>
-                  <input
-                    id="mobile-phone"
-                    type="tel"
-                    required
+                <div className="flex gap-2">
+                  <select
+                    value={otpCountryCode}
+                    onChange={(e) => setOtpCountryCode(e.target.value)}
                     disabled={smsSent}
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 text-sm disabled:opacity-50"
-                    placeholder="+919414407192"
-                  />
+                    className="bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white px-2 py-2.5 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none text-xs cursor-pointer max-w-[110px]"
+                  >
+                    {countryCodes.map((c) => (
+                      <option key={`otp-${c.code}-${c.name}`} value={c.code} className="bg-[#1E293B] text-white">
+                        {c.flag} {c.code}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="relative flex-grow">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#CBD5E1]/60">
+                      <Phone className="h-4.5 w-4.5" />
+                    </div>
+                    <input
+                      id="mobile-phone"
+                      type="tel"
+                      required
+                      disabled={smsSent}
+                      value={otpPhoneBody}
+                      onChange={(e) => setOtpPhoneBody(e.target.value.replace(/\D/g, ""))}
+                      className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 text-sm disabled:opacity-50"
+                      placeholder="9414407192"
+                    />
+                  </div>
                 </div>
               </div>
 

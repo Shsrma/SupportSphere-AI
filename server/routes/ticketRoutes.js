@@ -9,6 +9,8 @@ const {
   deleteTicket,
   addComment,
   getComments,
+  addCollaborator,
+  removeCollaborator,
 } = require("../controllers/ticketController");
 
 const {
@@ -46,5 +48,10 @@ router
   .route("/:id/comments")
   .post(upload.array("attachments", 2), createCommentValidator, validate, addComment)
   .get(getComments);
+
+// @route   POST /api/tickets/:id/collaborators - Add collaborator to a ticket
+// @route   DELETE /api/tickets/:id/collaborators/:userId - Remove collaborator
+router.post("/:id/collaborators", addCollaborator);
+router.delete("/:id/collaborators/:userId", removeCollaborator);
 
 module.exports = router;

@@ -4,6 +4,25 @@ const AppError = require("../utils/errorUtils");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/responseHelper");
 
+// Symbolic Role Hierarchy (index 0 = highest, index 9 = lowest)
+const roleHierarchy = [
+  "⚡ god_admin",
+  "👑 super_admin",
+  "🛡️ admin",
+  "⚜️ support_manager",
+  "⚙️ support_agent",
+  "🤖 ai_reviewer",
+  "📊 analytics_manager",
+  "📁 organization_manager",
+  "📁 verified_user",
+  "🔹 guest_user"
+];
+
+const getRoleRank = (roleName) => {
+  const index = roleHierarchy.indexOf(roleName);
+  return index === -1 ? 999 : index;
+};
+
 // @desc    Get all staff members (Admins and Support staff)
 // @route   GET /api/admin/staff
 // @access  Private (Admin & Support only)
@@ -129,20 +148,7 @@ const updateUserRole = asyncHandler(async (req, res, next) => {
     return next(new AppError("Only administrators can update user roles", 403));
   }
 
-  const validRoles = [
-    "⚡ god_admin",
-    "👑 super_admin",
-    "🛡️ admin",
-    "⚜️ support_manager",
-    "⚙️ support_agent",
-    "🤖 ai_reviewer",
-    "📊 analytics_manager",
-    "📁 organization_manager",
-    "📁 verified_user",
-    "🔹 guest_user"
-  ];
-
-  if (!role || !validRoles.includes(role)) {
+  if (!role || !roleHierarchy.includes(role)) {
     return next(new AppError("Please provide a valid role with symbol", 400));
   }
 
@@ -156,19 +162,25 @@ const updateUserRole = asyncHandler(async (req, res, next) => {
     return next(new AppError("You cannot demote yourself from the admin role", 400));
   }
 
-  // If the target is the God Admin, enforce strict protection rules
-  if (user.role === "⚡ god_admin") {
-    if (req.user.role !== "⚡ god_admin") {
-      return next(new AppError("Only the God Admin can modify God Admin permissions or roles", 403));
-    }
-    
-    // Even if they attempt to change their own role, they still remain God Admin
-    user.role = "⚡ god_admin";
+  // God Admin bypass
+  if (req.user.role === "⚡ god_admin") {
+    user.role = role;
   } else {
-    // If promoting someone to God Admin, only the current God Admin can do it
-    if (role === "⚡ god_admin" && req.user.role !== "⚡ god_admin") {
-      return next(new AppError("Only the God Admin can create another God Admin", 403));
+    // Non-god admin hierarchy checks
+    const requesterRank = getRoleRank(req.user.role);
+    const targetCurrentRank = getRoleRank(user.role);
+    const targetNewRank = getRoleRank(role);
+
+    // 1. Can only change role of users strictly BELOW them in the hierarchy
+    if (targetCurrentRank <= requesterRank) {
+      return next(new AppError("You can only modify roles of users strictly below you in privilege", 403));
     }
+
+    // 2. Cannot assign a role that is higher or equal to their own role
+    if (targetNewRank <= requesterRank) {
+      return next(new AppError("You cannot promote a user to your rank or above", 403));
+    }
+
     user.role = role;
   }
 
@@ -182,8 +194,28 @@ const updateUserRole = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Get all users in the system
+// @route   GET /api/admin/users
+// @access  Private (Admin only)
+const getAllUsers = asyncHandler(async (req, res, next) => {
+  if (!["⚡ god_admin", "👑 super_admin", "🛡️ admin"].includes(req.user.role)) {
+    return next(new AppError("Not authorized to view user list", 403));
+  }
+
+  let users = await User.find({}).select("name email role status");
+
+  // Filter based on role hierarchy: non-god admins can only see users equal or below them
+  if (req.user.role !== "⚡ god_admin") {
+    const requesterRank = getRoleRank(req.user.role);
+    users = users.filter((u) => getRoleRank(u.role) >= requesterRank);
+  }
+
+  sendSuccess(res, "User list retrieved successfully", users);
+});
+
 module.exports = {
   getStaffMembers,
   getAnalytics,
   updateUserRole,
+  getAllUsers,
 };

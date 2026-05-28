@@ -55,6 +55,12 @@ const ticketSchema = new mongoose.Schema(
       ref: "User",
       required: [true, "Ticket creator is required"],
     },
+    collaborators: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

@@ -5,6 +5,7 @@ import api from "../../services/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-hot-toast";
 import { Mail, Lock, Loader2, ArrowRight, HelpCircle, Eye, EyeOff, KeyRound, ArrowLeft, Sparkles, Fingerprint, Phone } from "lucide-react";
+import { countryCodes } from "../../utils/countryCodes";
 
 const Login = () => {
   const { 
@@ -30,10 +31,18 @@ const Login = () => {
   
   // Firebase Mobile Auth States
   const [authMode, setAuthMode] = useState("credentials"); // "credentials" or "mobile"
-  const [phone, setPhone] = useState("");
+  const [otpCountryCode, setOtpCountryCode] = useState("+91");
+  const [otpPhoneBody, setOtpPhoneBody] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [smsSent, setSmsSent] = useState(false);
   const [smsSending, setSmsSending] = useState(false);
+
+  // Credentials User Registered Phone for 2FA fallback
+  const [userPhone, setUserPhone] = useState("");
+  const [isSms2fa, setIsSms2fa] = useState(false);
+  const [sms2faSent, setSms2faSent] = useState(false);
+  const [sms2faCode, setSms2faCode] = useState("");
+  const [sms2faSending, setSms2faSending] = useState(false);
   
   // 2FA Verification states
   const [otp, setOtp] = useState("");
@@ -86,6 +95,7 @@ const Login = () => {
         setStep("2fa");
         setCooldown(50);
         setOtp("");
+        setUserPhone(result.phoneNumber || "");
         toast.success("Credentials verified. Check your server console for the 2FA code!");
       } else {
         toast.success(`Welcome back, ${result.user.name}!`);
@@ -146,13 +156,15 @@ const Login = () => {
   // Firebase SMS Handlers for Mobile OTP Login
   const handleSendMobileSms = async (e) => {
     e.preventDefault();
-    if (!phone) {
-      toast.error("Please enter your mobile number with country code (e.g. +919414407192).");
+    const cleanPhoneBody = otpPhoneBody.replace(/[\s\-\(\)]/g, "").replace(/^0+/, "");
+    if (!cleanPhoneBody) {
+      toast.error("Please enter your mobile number.");
       return;
     }
+    const fullPhone = otpCountryCode + cleanPhoneBody;
     setSmsSending(true);
     toast.loading("Sending SMS verification code...", { id: "sms-send" });
-    const result = await sendFirebaseSms(phone, "recaptcha-container");
+    const result = await sendFirebaseSms(fullPhone, "recaptcha-container");
     setSmsSending(false);
     if (result.success) {
       setSmsSent(true);
@@ -178,6 +190,44 @@ const Login = () => {
       navigate(from, { replace: true });
     } else {
       toast.error(result.error || "Verification failed.", { id: "sms-verify" });
+    }
+  };
+
+  // Secondary SMS 2FA Fallback Handlers
+  const handleSend2faSms = async () => {
+    if (!userPhone) {
+      toast.error("No registered mobile number found on your account.");
+      return;
+    }
+    setSms2faSending(true);
+    toast.loading("Sending SMS verification code to your registered mobile...", { id: "sms-2fa-send" });
+    const result = await sendFirebaseSms(userPhone, "recaptcha-container-2fa");
+    setSms2faSending(false);
+    if (result.success) {
+      setSms2faSent(true);
+      setIsSms2fa(true);
+      setCooldown(50);
+      toast.success("SMS verification code sent to your registered mobile number!", { id: "sms-2fa-send" });
+    } else {
+      toast.error(result.error || "Failed to send SMS verification code.", { id: "sms-2fa-send" });
+    }
+  };
+
+  const handleVerify2faSms = async (e) => {
+    e.preventDefault();
+    if (!sms2faCode) {
+      toast.error("Please enter the 6-digit SMS verification code.");
+      return;
+    }
+    setIsSubmitting(true);
+    toast.loading("Verifying secondary phone authentication...", { id: "sms-2fa-verify" });
+    const result = await verifyFirebaseSms(sms2faCode, email);
+    setIsSubmitting(false);
+    if (result.success) {
+      toast.success(`Welcome back, ${result.user.name}!`, { id: "sms-2fa-verify" });
+      navigate(from, { replace: true });
+    } else {
+      toast.error(result.error || "Verification failed.", { id: "sms-2fa-verify" });
     }
   };
 
@@ -418,22 +468,36 @@ const Login = () => {
                     {/* Mobile Phone Field */}
                     <div>
                       <label className="block text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider mb-1.5" htmlFor="mobile-phone">
-                        Mobile Number (with country code) *
+                        Mobile Number *
                       </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#CBD5E1]/60">
-                          <Phone className="h-4.5 w-4.5" />
-                        </div>
-                        <input
-                          id="mobile-phone"
-                          type="tel"
-                          required
+                      <div className="flex gap-2">
+                        <select
+                          value={otpCountryCode}
+                          onChange={(e) => setOtpCountryCode(e.target.value)}
                           disabled={smsSent}
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 text-sm disabled:opacity-50"
-                          placeholder="+919414407192"
-                        />
+                          className="bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white px-2 py-2.5 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none text-xs cursor-pointer max-w-[110px]"
+                        >
+                          {countryCodes.map((c) => (
+                            <option key={`otp-${c.code}-${c.name}`} value={c.code} className="bg-[#1E293B] text-white">
+                              {c.flag} {c.code}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="relative flex-grow">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#CBD5E1]/60">
+                            <Phone className="h-4.5 w-4.5" />
+                          </div>
+                          <input
+                            id="mobile-phone"
+                            type="tel"
+                            required
+                            disabled={smsSent}
+                            value={otpPhoneBody}
+                            onChange={(e) => setOtpPhoneBody(e.target.value.replace(/\D/g, ""))}
+                            className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 text-sm disabled:opacity-50"
+                            placeholder="9414407192"
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -607,80 +671,173 @@ const Login = () => {
 
             {/* STEP 2: 2FA VERIFICATION CODE FORM */}
             {step === "2fa" && (
-              <motion.form
+              <motion.div
                 key="2fa-form"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 className="space-y-4"
-                onSubmit={handle2FaSubmit}
               >
-                <div>
-                  <label className="block text-xs font-bold text-[#A78BFA] uppercase tracking-wider mb-1.5" htmlFor="2fa-otp">
-                    6-Digit 2FA Verification Code
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#A78BFA]/80">
-                      <KeyRound className="h-4.5 w-4.5" />
+                {!isSms2fa ? (
+                  <form onSubmit={handle2FaSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#A78BFA] uppercase tracking-wider mb-1.5" htmlFor="2fa-otp">
+                        6-Digit Email 2FA Verification Code
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#A78BFA]/80">
+                          <KeyRound className="h-4.5 w-4.5" />
+                        </div>
+                        <input
+                          id="2fa-otp"
+                          type="text"
+                          required
+                          value={otp}
+                          onChange={(e) => setOtp(e.target.value)}
+                          className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/80 border border-[#7C3AED]/50 rounded-xl text-white placeholder-[#CBD5E1]/30 focus:ring-2 focus:ring-[#7C3AED] focus:border-transparent outline-none transition-all duration-200 text-sm font-semibold tracking-widest text-center"
+                          placeholder="000000"
+                          maxLength={6}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center mt-2 text-[10px]">
+                        <span className="text-[#CBD5E1]/50">Code valid for 50s</span>
+                        {cooldown > 0 ? (
+                          <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleResend2Fa}
+                            className="text-[#06B6D4] hover:underline font-semibold bg-transparent border-0 cursor-pointer"
+                          >
+                            Resend Code
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <input
-                      id="2fa-otp"
-                      type="text"
-                      required
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/80 border border-[#7C3AED]/50 rounded-xl text-white placeholder-[#CBD5E1]/30 focus:ring-2 focus:ring-[#7C3AED] focus:border-transparent outline-none transition-all duration-200 text-sm font-semibold tracking-widest text-center"
-                      placeholder="000000"
-                      maxLength={6}
-                    />
-                  </div>
-                  <div className="flex justify-between items-center mt-2 text-[10px]">
-                    <span className="text-[#CBD5E1]/50">Code valid for 50s</span>
-                    {cooldown > 0 ? (
-                      <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
-                    ) : (
+
+                    <div className="flex gap-3 mt-6">
                       <button
                         type="button"
-                        onClick={handleResend2Fa}
-                        className="text-[#06B6D4] hover:underline font-semibold bg-transparent border-0 cursor-pointer"
+                        onClick={() => {
+                          setStep("login");
+                          setIsSms2fa(false);
+                          setSms2faSent(false);
+                        }}
+                        className="px-4 py-2.5 border border-[#334155] rounded-xl text-xs text-[#CBD5E1] hover:text-white transition-all bg-transparent cursor-pointer flex items-center gap-1.5"
                       >
-                        Resend Code
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        Back
                       </button>
-                    )}
-                  </div>
-                </div>
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="flex-grow flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 shadow-lg shadow-emerald-500/20 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            Verify & Login
+                            <ArrowRight className="h-4 w-4" />
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
 
-                <div className="flex gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setStep("login")}
-                    className="px-4 py-2.5 border border-[#334155] rounded-xl text-xs text-[#CBD5E1] hover:text-white transition-all bg-transparent cursor-pointer flex items-center gap-1.5"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    Back
-                  </button>
-                  <motion.button
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="flex-grow flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 shadow-lg shadow-emerald-500/20 disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Verifying...
-                      </>
-                    ) : (
-                      <>
-                        Verify & Login
-                        <ArrowRight className="h-4 w-4" />
-                      </>
+                    {userPhone && (
+                      <div className="pt-2 border-t border-[#334155]/40 mt-4">
+                        <button
+                          type="button"
+                          onClick={handleSend2faSms}
+                          disabled={sms2faSending}
+                          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-semibold text-[#A78BFA] hover:text-white bg-[#0F172A]/80 hover:bg-[#1E293B] border border-[#7C3AED]/30 hover:border-[#7C3AED]/70 transition-all duration-300 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                          Verify via Mobile SMS instead ({userPhone.slice(0, 4)}***{userPhone.slice(-4)})
+                        </button>
+                      </div>
                     )}
-                  </motion.button>
-                </div>
+                  </form>
+                ) : (
+                  <form onSubmit={handleVerify2faSms} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-[#A78BFA] uppercase tracking-wider mb-1.5" htmlFor="sms-2fa-otp">
+                        6-Digit Mobile SMS Verification Code
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#A78BFA]/80">
+                          <KeyRound className="h-4.5 w-4.5" />
+                        </div>
+                        <input
+                          id="sms-2fa-otp"
+                          type="text"
+                          required
+                          value={sms2faCode}
+                          onChange={(e) => setSms2faCode(e.target.value)}
+                          className="block w-full pl-10 pr-4 py-2.5 bg-[#0F172A]/80 border border-[#7C3AED]/50 rounded-xl text-white placeholder-[#CBD5E1]/30 focus:ring-2 focus:ring-[#7C3AED] focus:border-transparent outline-none transition-all duration-200 text-sm font-semibold tracking-widest text-center"
+                          placeholder="000000"
+                          maxLength={6}
+                        />
+                      </div>
+                      <div className="flex justify-between items-center mt-2 text-[10px]">
+                        <span className="text-[#CBD5E1]/50">SMS expires in 50 seconds</span>
+                        {cooldown > 0 ? (
+                          <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleSend2faSms}
+                            className="text-[#06B6D4] hover:underline font-semibold bg-transparent border-0 cursor-pointer"
+                          >
+                            Resend SMS Code
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-                {/* Verify 2FA with device biometrics/passkey */}
+                    <div className="flex gap-3 mt-6">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSms2fa(false);
+                          setSms2faSent(false);
+                        }}
+                        className="px-4 py-2.5 border border-[#334155] rounded-xl text-xs text-[#CBD5E1] hover:text-white transition-all bg-transparent cursor-pointer flex items-center gap-1.5"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        Back to Email OTP
+                      </button>
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        type="submit"
+                        disabled={isSubmitting || !sms2faCode}
+                        className="flex-grow flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 shadow-lg shadow-emerald-500/20 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            Verify & Login
+                            <ArrowRight className="h-4 w-4" />
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
+                  </form>
+                )}
+
+                <div id="recaptcha-container-2fa" className="my-2 flex justify-center"></div>
+
+                {/* Verify with device biometrics/passkey */}
                 <button
                   type="button"
                   onClick={handlePasskeyLogin}
@@ -690,7 +847,7 @@ const Login = () => {
                   <Fingerprint className="h-4.5 w-4.5 text-[#7C3AED]" />
                   Verify with Device Passkey
                 </button>
-              </motion.form>
+              </motion.div>
             )}
 
             {/* STEP 3: FORGOT PASSWORD FORM */}

@@ -14,16 +14,23 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter: accept images (jpeg, png, webp) and pdf documents
+// File filter: accept images, PDFs, text, and code files
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|webp|pdf/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  const allowedExtensions = /jpeg|jpg|png|webp|pdf|txt|log|json|js|jsx|ts|tsx|py|java|cpp|h|html|css|md/;
+  const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase());
 
-  if (extname && mimetype) {
+  // Check if standard image/PDF, or text-based code files
+  const isTextOrCode = file.mimetype.startsWith("text/") || 
+                       file.mimetype === "application/json" || 
+                       file.mimetype === "application/javascript" ||
+                       file.mimetype === "application/octet-stream";
+
+  const isImageOrPdf = /jpeg|jpg|png|webp|pdf/.test(file.mimetype);
+
+  if (extname && (isImageOrPdf || isTextOrCode)) {
     return cb(null, true);
   } else {
-    cb(new AppError("Only images (jpeg, png, webp) and PDF documents are allowed!", 400), false);
+    cb(new AppError("Allowed formats: Images (JPEG, PNG, WEBP), PDFs, and text/code files (.txt, .js, .py, etc.)", 400), false);
   }
 };
 

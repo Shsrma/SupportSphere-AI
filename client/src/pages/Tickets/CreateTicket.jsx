@@ -10,8 +10,22 @@ const CreateTicket = () => {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("other");
   const [priority, setPriority] = useState("medium");
+  const [attachments, setAttachments] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length + attachments.length > 5) {
+      toast.error("You can upload a maximum of 5 attachments.");
+      return;
+    }
+    setAttachments([...attachments, ...files]);
+  };
+
+  const handleRemoveFile = (index) => {
+    setAttachments(attachments.filter((_, idx) => idx !== index));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,11 +37,19 @@ const CreateTicket = () => {
 
     setIsSubmitting(true);
     try {
-      const response = await api.post("/tickets", {
-        title,
-        description,
-        category,
-        priority,
+      const formData = new FormData();
+      formData.append("title", title);
+      formData.append("description", description);
+      formData.append("category", category);
+      formData.append("priority", priority);
+      attachments.forEach((file) => {
+        formData.append("attachments", file);
+      });
+
+      const response = await api.post("/tickets", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
 
       if (response.data.success) {
@@ -145,6 +167,41 @@ const CreateTicket = () => {
               className="block w-full px-4 py-3 bg-[#0F172A]/60 border border-[#334155] rounded-xl text-white placeholder-[#CBD5E1]/40 focus:ring-2 focus:ring-[#2563EB] focus:border-transparent outline-none transition-all duration-200 resize-y"
               placeholder="Provide as much detail as possible. Specify block numbers, lab rooms, device identifiers, or timelines..."
             />
+          </div>
+
+          {/* File Upload Field */}
+          <div>
+            <label className="block text-xs font-semibold text-[#CBD5E1] uppercase tracking-wider mb-2">
+              Attachments (Images, PDFs, or Code / Logs)
+            </label>
+            <div className="flex flex-col gap-3">
+              <input
+                type="file"
+                multiple
+                onChange={handleFileChange}
+                accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.log,.json,.js,.jsx,.ts,.tsx,.py,.java,.cpp,.h,.html,.css,.md"
+                className="block w-full text-xs text-[#CBD5E1] file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border file:border-[#334155] file:text-xs file:font-semibold file:bg-[#0F172A] file:text-white hover:file:bg-[#1E293B] file:cursor-pointer cursor-pointer border border-[#334155]/60 bg-[#0F172A]/30 p-2 rounded-xl"
+              />
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {attachments.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 px-3 py-1 bg-[#0F172A] border border-[#334155] rounded-lg text-xs text-white max-w-[200px]">
+                      <span className="truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFile(idx)}
+                        className="text-[#EF4444] hover:text-red-400 font-bold focus:outline-none cursor-pointer"
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <span className="text-[10px] text-[#CBD5E1]/50">
+                Max 5 files. Max size 5MB each. Supported formats: Images (JPEG, PNG, WEBP), PDFs, and text/code logs.
+              </span>
+            </div>
           </div>
 
           {/* AI Banner Callout */}

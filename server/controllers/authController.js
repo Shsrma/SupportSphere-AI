@@ -220,6 +220,7 @@ const loginUser = asyncHandler(async (req, res, next) => {
   sendSuccess(res, "Credentials verified. Two-factor authentication code sent to email or local console.", {
     requires2FA: true,
     email: user.email,
+    phoneNumber: user.phoneNumber || null,
   });
 });
 
