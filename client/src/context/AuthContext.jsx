@@ -1,6 +1,15 @@
 import { createContext, useState, useEffect } from "react";
 import api from "../services/api";
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
+import { 
+  auth, 
+  googleProvider, 
+  githubProvider, 
+  microsoftProvider, 
+  signInWithPopup, 
+  RecaptchaVerifier, 
+  signInWithPhoneNumber 
+} from "../firebase";
 
 export const AuthContext = createContext();
 
@@ -8,6 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [confirmationResult, setConfirmationResult] = useState(null);
 
   // Initialize Auth state from localStorage
   useEffect(() => {
@@ -179,6 +189,87 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Social authentication via Firebase (Google, Microsoft, GitHub)
+  const loginWithFirebaseSocial = async (providerName) => {
+    setLoading(true);
+    try {
+      let provider;
+      if (providerName === "Google") provider = googleProvider;
+      else if (providerName === "GitHub") provider = githubProvider;
+      else if (providerName === "Microsoft") provider = microsoftProvider;
+      else throw new Error("Unsupported provider");
+
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+
+      const name = firebaseUser.displayName || `${providerName} User`;
+      const email = firebaseUser.email || `${providerName.toLowerCase()}_user_${firebaseUser.uid}@supportsphere.ai`;
+      const phoneNumber = firebaseUser.phoneNumber || "";
+
+      // Register or sign in via our backend using the isOAuth flag
+      const backendResponse = await register(name, email, "", phoneNumber, "", true);
+      setLoading(false);
+      return backendResponse;
+    } catch (error) {
+      setLoading(false);
+      console.error("Firebase social login error:", error);
+      return { success: false, error: error.message || "Social authentication failed." };
+    }
+  };
+
+  // Firebase SMS OTP verification initiation
+  const sendFirebaseSms = async (phoneNumber, recaptchaContainerId) => {
+    setLoading(true);
+    try {
+      // Clear previous verifier if any
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+      }
+      
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
+        size: "invisible",
+        callback: (response) => {
+          // reCAPTCHA solved, direct SMS trigger
+        }
+      });
+
+      const confirmResult = await signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier);
+      setConfirmationResult(confirmResult);
+      setLoading(false);
+      return { success: true };
+    } catch (error) {
+      setLoading(false);
+      console.error("Firebase SMS send error:", error);
+      return { success: false, error: error.message || "Failed to send SMS verification code." };
+    }
+  };
+
+  // Confirm Firebase SMS OTP code
+  const verifyFirebaseSms = async (smsCode) => {
+    setLoading(true);
+    try {
+      if (!confirmationResult) {
+        throw new Error("No pending SMS verification challenge found.");
+      }
+      
+      const result = await confirmationResult.confirm(smsCode);
+      const firebaseUser = result.user;
+
+      const name = "Verified Mobile User";
+      const phoneNumber = firebaseUser.phoneNumber;
+      const email = `phone_${phoneNumber.replace("+", "")}_${firebaseUser.uid}@supportsphere.ai`;
+
+      // Call unified register/login with isOAuth flag
+      const backendResponse = await register(name, email, "", phoneNumber, "", true);
+      setLoading(false);
+      return backendResponse;
+    } catch (error) {
+      setLoading(false);
+      console.error("Firebase SMS verify error:", error);
+      return { success: false, error: error.message || "Invalid SMS verification code." };
+    }
+  };
+
   // Logout handler
   const logout = () => {
     localStorage.removeItem("token");
@@ -199,6 +290,9 @@ export const AuthProvider = ({ children }) => {
         loginWithPasskey,
         register,
         logout,
+        loginWithFirebaseSocial,
+        sendFirebaseSms,
+        verifyFirebaseSms,
         isAuthenticated: !!user,
         // Map symbolic roles to existing layout privileges
         isAdmin: ["⚡ god_admin", "👑 super_admin", "🛡️ admin", "📊 analytics_manager", "📁 organization_manager"].includes(user?.role),

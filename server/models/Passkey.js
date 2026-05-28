@@ -42,7 +42,6 @@ const passkeySchema = new mongoose.Schema(
 
 // Indexing for faster lookups
 passkeySchema.index({ userId: 1 });
-passkeySchema.index({ credentialID: 1 });
 
 const Passkey = mongoose.model("Passkey", passkeySchema);
 
