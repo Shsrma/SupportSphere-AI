@@ -1,6 +1,8 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect, useRef } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
+import api from "../services/api";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   HelpCircle,
   LayoutDashboard,
@@ -21,8 +23,69 @@ const DashboardLayout = () => {
   const { user, logout, isAdmin, isSupport } = useContext(AuthContext);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
+  
+  // Notification states
+  const [notifications, setNotifications] = useState([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const notifDropdownRef = useRef(null);
+
   const location = useLocation();
   const navigate = useNavigate();
+
+  const fetchNotifications = async () => {
+    try {
+      const response = await api.get("/notifications");
+      if (response.data.success) {
+        setNotifications(response.data.data);
+      }
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+      // Poll notifications every 30 seconds for live updates
+      const interval = setInterval(fetchNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  // Click outside listener for notifications dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(event.target)) {
+        setIsNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleMarkAsRead = async (id, ticketId) => {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+      if (ticketId) {
+        navigate(`/tickets/${ticketId}`);
+        setIsNotifOpen(false);
+      }
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await api.put("/notifications/read-all");
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+    }
+  };
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const handleLogout = () => {
     logout();
@@ -242,10 +305,81 @@ const DashboardLayout = () => {
 
           <div className="flex items-center gap-4">
             {/* Notification Bell */}
-            <button className="relative p-2 rounded-lg border border-[#334155] hover:bg-[#1E293B] text-[#CBD5E1] hover:text-white transition-all duration-200">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#EF4444] ring-2 ring-[#0F172A]" />
-            </button>
+            <div className="relative" ref={notifDropdownRef}>
+              <button 
+                onClick={() => {
+                  setIsNotifOpen(!isNotifOpen);
+                  if (!isNotifOpen) fetchNotifications();
+                }}
+                className="relative p-2 rounded-lg border border-[#334155] hover:bg-[#1E293B] text-[#CBD5E1] hover:text-white transition-all duration-200 cursor-pointer"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-[#EF4444] text-[9px] font-bold text-white flex items-center justify-center ring-2 ring-[#0F172A]">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <AnimatePresence>
+                {isNotifOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-[#334155] bg-[#1E293B]/95 backdrop-blur-xl shadow-2xl z-50 overflow-hidden"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[#334155]/60 bg-[#0F172A]/40">
+                      <span className="font-semibold text-sm text-white">Notifications</span>
+                      {unreadCount > 0 && (
+                        <button 
+                          onClick={handleMarkAllAsRead}
+                          className="text-[11px] font-bold text-[#06B6D4] hover:text-[#22D3EE] bg-transparent border-0 cursor-pointer"
+                        >
+                          Mark all as read
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Notification List */}
+                    <div className="max-h-80 overflow-y-auto divide-y divide-[#334155]/40 custom-scrollbar">
+                      {notifications.length === 0 ? (
+                        <div className="py-8 px-4 text-center text-xs text-[#CBD5E1]/50">
+                          No notifications yet
+                        </div>
+                      ) : (
+                        notifications.map((n) => (
+                          <div 
+                            key={n._id}
+                            onClick={() => handleMarkAsRead(n._id, n.ticketId?._id)}
+                            className={`p-3.5 text-left cursor-pointer transition-colors duration-150 relative ${
+                              n.isRead ? "hover:bg-[#1E293B]/40" : "bg-[#2563EB]/5 hover:bg-[#2563EB]/10"
+                            }`}
+                          >
+                            {!n.isRead && (
+                              <span className="absolute top-4 left-2.5 h-2 w-2 rounded-full bg-[#06B6D4]" />
+                            )}
+                            <div className={`flex flex-col gap-1 ${!n.isRead ? "pl-3.5" : ""}`}>
+                              <p className="text-xs text-[#F8FAFC] leading-normal">{n.message}</p>
+                              <div className="flex justify-between items-center text-[10px] text-[#CBD5E1]/40 mt-1">
+                                <span className="truncate max-w-[180px]">
+                                  Ticket: {n.ticketId?.title || "Unknown"}
+                                </span>
+                                <span>
+                                  {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* Profile Dropdown */}
             <div className="relative">

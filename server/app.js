@@ -8,6 +8,7 @@ const authRoutes = require("./routes/authRoutes");
 const ticketRoutes = require("./routes/ticketRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const passkeyRoutes = require("./routes/passkeyRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 
@@ -43,6 +44,8 @@ app.use("/api/tickets", ticketRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use("/api/passkey", passkeyRoutes);
+
+app.use("/api/notifications", notificationRoutes);
 
 // Centralized Error Handler Middleware
 const errorMiddleware = require("./middleware/errorMiddleware");

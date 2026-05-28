@@ -1,10 +1,12 @@
 const Ticket = require("../models/Ticket");
 const Comment = require("../models/Comment");
 const User = require("../models/User");
+const Notification = require("../models/Notification");
 const AppError = require("../utils/errorUtils");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/responseHelper");
 const { analyzeTicket } = require("../services/geminiService");
+const { uploadToCloudinary } = require("../services/cloudinaryService");
 
 // @desc    Create a new support ticket
 // @route   POST /api/tickets
@@ -14,10 +16,14 @@ const createTicket = asyncHandler(async (req, res, next) => {
 
   // Process uploaded file paths if present
   let attachmentPaths = [];
-  if (req.files && req.files.length > 0) {
-    attachmentPaths = req.files.map((file) => file.path || `/uploads/${file.filename}`);
-  } else if (req.file) {
-    attachmentPaths = [req.file.path || `/uploads/${req.file.filename}`];
+  const filesToProcess = req.files && req.files.length > 0 ? req.files : (req.file ? [req.file] : []);
+
+  for (const file of filesToProcess) {
+    let fileUrl = await uploadToCloudinary(file.path);
+    if (!fileUrl) {
+      fileUrl = `/uploads/${file.filename}`;
+    }
+    attachmentPaths.push(fileUrl);
   }
 
   // Trigger Gemini AI Analysis
@@ -37,6 +43,24 @@ const createTicket = asyncHandler(async (req, res, next) => {
 
   // Create ticket in database
   const ticket = await Ticket.create(ticketData);
+
+  // Notify administrative and support staff about the new ticket
+  try {
+    const staffMembers = await User.find({
+      role: { $in: ["⚡ god_admin", "👑 super_admin", "🛡️ admin", "⚜️ support_manager", "⚙️ support_agent", "🤖 ai_reviewer"] }
+    });
+    for (const staff of staffMembers) {
+      await Notification.create({
+        recipient: staff._id,
+        sender: req.user._id,
+        ticketId: ticket._id,
+        type: "ticket_created",
+        message: `New ticket created: "${ticket.title}" by ${req.user.name}`,
+      });
+    }
+  } catch (err) {
+    console.error("Failed to generate ticket creation notifications:", err);
+  }
 
   sendSuccess(res, "Ticket created successfully", ticket, 201);
 });
@@ -133,6 +157,9 @@ const updateTicket = asyncHandler(async (req, res, next) => {
     return next(new AppError("Ticket not found", 404));
   }
 
+  const originalStatus = ticket.status;
+  const originalAssignedTo = ticket.assignedTo ? ticket.assignedTo.toString() : null;
+
   const isCreator = ticket.createdBy.toString() === req.user._id.toString();
   const isAdminOrSupport = !["📁 verified_user", "🔹 guest_user"].includes(req.user.role);
 
@@ -178,6 +205,44 @@ const updateTicket = asyncHandler(async (req, res, next) => {
   }
 
   const updatedTicket = await ticket.save();
+
+  // Create notifications for updates
+  try {
+    // 1. If status changed, notify creator and collaborators
+    if (status && originalStatus !== status) {
+      const recipients = new Set([ticket.createdBy.toString()]);
+      if (ticket.collaborators && ticket.collaborators.length > 0) {
+        ticket.collaborators.forEach(c => recipients.add(c.toString()));
+      }
+      recipients.delete(req.user._id.toString());
+
+      for (const recipientId of recipients) {
+        await Notification.create({
+          recipient: recipientId,
+          sender: req.user._id,
+          ticketId: ticket._id,
+          type: "status_updated",
+          message: `Ticket status updated to "${status.replace("_", " ")}" by ${req.user.name}`,
+        });
+      }
+    }
+
+    // 2. If assignment changed, notify new assignee
+    if (assignedTo !== undefined) {
+      const newAssignedStr = assignedTo === "" ? null : assignedTo.toString();
+      if (originalAssignedTo !== newAssignedStr && newAssignedStr) {
+        await Notification.create({
+          recipient: newAssignedStr,
+          sender: req.user._id,
+          ticketId: ticket._id,
+          type: "status_updated",
+          message: `You have been assigned to ticket: "${ticket.title}" by ${req.user.name}`,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Failed to generate update notifications:", err);
+  }
 
   // Populate references for return
   await updatedTicket.populate([
@@ -232,10 +297,14 @@ const addComment = asyncHandler(async (req, res, next) => {
 
   // Process attachments for comments
   let commentAttachments = [];
-  if (req.files && req.files.length > 0) {
-    commentAttachments = req.files.map((file) => file.path || `/uploads/${file.filename}`);
-  } else if (req.file) {
-    commentAttachments = [req.file.path || `/uploads/${req.file.filename}`];
+  const commentFiles = req.files && req.files.length > 0 ? req.files : (req.file ? [req.file] : []);
+
+  for (const file of commentFiles) {
+    let fileUrl = await uploadToCloudinary(file.path);
+    if (!fileUrl) {
+      fileUrl = `/uploads/${file.filename}`;
+    }
+    commentAttachments.push(fileUrl);
   }
 
   const comment = await Comment.create({
@@ -255,6 +324,30 @@ const addComment = asyncHandler(async (req, res, next) => {
   } else {
     // Save ticket anyway to update 'updatedAt' field
     await ticket.save();
+  }
+
+  // Notify recipients about the new comment (creator, collaborators, assignee)
+  try {
+    const recipients = new Set([ticket.createdBy.toString()]);
+    if (ticket.collaborators && ticket.collaborators.length > 0) {
+      ticket.collaborators.forEach(c => recipients.add(c.toString()));
+    }
+    if (ticket.assignedTo) {
+      recipients.add(ticket.assignedTo.toString());
+    }
+    recipients.delete(req.user._id.toString());
+
+    for (const recipientId of recipients) {
+      await Notification.create({
+        recipient: recipientId,
+        sender: req.user._id,
+        ticketId: ticket._id,
+        type: "comment_added",
+        message: `New reply added by ${req.user.name} on ticket: "${ticket.title}"`,
+      });
+    }
+  } catch (err) {
+    console.error("Failed to generate comment notifications:", err);
   }
 
   sendSuccess(res, "Comment added successfully", comment, 201);
@@ -321,6 +414,19 @@ const addCollaborator = asyncHandler(async (req, res, next) => {
 
   ticket.collaborators.push(targetUser._id);
   await ticket.save();
+
+  // Create notification for the added collaborator
+  try {
+    await Notification.create({
+      recipient: targetUser._id,
+      sender: req.user._id,
+      ticketId: ticket._id,
+      type: "collaborator_added",
+      message: `You have been added as a collaborator on ticket: "${ticket.title}" by ${req.user.name}`,
+    });
+  } catch (err) {
+    console.error("Failed to generate collaborator notification:", err);
+  }
 
   // Populate references for return
   await ticket.populate([

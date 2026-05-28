@@ -12,19 +12,20 @@ const otpSchema = new mongoose.Schema(
       type: String,
       required: [true, "OTP code is required"],
     },
-    createdAt: {
+    expiresAt: {
       type: Date,
-      default: Date.now,
-      expires: 50, // MongoDB TTL: document will automatically expire and delete after 50 seconds
+      required: true,
+      default: () => new Date(Date.now() + 5 * 60 * 1000), // 5 minutes validity
     },
   },
   {
-    timestamps: false,
+    timestamps: true,
   }
 );
 
-// Indexing for faster lookups
+// Indexing for faster lookups and automatic expiration cleanup
 otpSchema.index({ email: 1 });
+otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const Otp = mongoose.model("Otp", otpSchema);
 

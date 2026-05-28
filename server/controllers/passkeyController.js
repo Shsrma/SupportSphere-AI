@@ -63,7 +63,7 @@ const getRegisterOptions = asyncHandler(async (req, res, next) => {
     userDisplayName: user.name,
     // Prevent registering same authenticator twice
     excludeCredentials: existingPasskeys.map((pk) => ({
-      id: pk.credentialID,
+      id: Buffer.from(pk.credentialID, "base64url"),
       type: "public-key",
       transports: pk.transports,
     })),
@@ -93,7 +93,7 @@ const verifyRegister = asyncHandler(async (req, res, next) => {
 
   // Retrieve saved challenge
   const otpRecord = await Otp.findOne({ email: user.email }).sort({ createdAt: -1 });
-  if (!otpRecord) {
+  if (!otpRecord || otpRecord.expiresAt < new Date()) {
     return next(new AppError("Registration challenge expired or not found. Try again.", 400));
   }
 
@@ -189,7 +189,7 @@ const verifyLogin = asyncHandler(async (req, res, next) => {
 
   // Retrieve saved challenge
   const otpRecord = await Otp.findOne({ email: user.email }).sort({ createdAt: -1 });
-  if (!otpRecord) {
+  if (!otpRecord || otpRecord.expiresAt < new Date()) {
     return next(new AppError("Authentication challenge expired or not found.", 400));
   }
 

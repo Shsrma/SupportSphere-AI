@@ -113,7 +113,7 @@ const Register = () => {
     setSmsSending(false);
     if (result.success) {
       setSmsSent(true);
-      setCooldown(50);
+      setCooldown(60);
       toast.success("SMS verification code sent to your phone!", { id: "sms-send" });
     } else {
       toast.error(result.error || "Failed to send SMS verification code.", { id: "sms-send" });
@@ -177,7 +177,7 @@ const Register = () => {
       const response = await api.post("/auth/send-otp", { email });
       if (response.data.success) {
         setOtpSent(true);
-        setCooldown(50);
+        setCooldown(60);
         toast.success("Verification code sent! Check your server console terminal.");
       }
     } catch (error) {
@@ -440,7 +440,7 @@ const Register = () => {
                     />
                   </div>
                   <div className="flex justify-between items-center mt-2 text-[10px]">
-                    <span className="text-[#CBD5E1]/50">Code expires in 50 seconds</span>
+                    <span className="text-[#CBD5E1]/50">Code valid for 5 minutes</span>
                     {cooldown > 0 ? (
                       <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
                     ) : (
@@ -576,7 +576,7 @@ const Register = () => {
                     />
                   </div>
                   <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-[#CBD5E1]/50">SMS code valid for 50 seconds</span>
+                    <span className="text-[#CBD5E1]/50">SMS code valid for 5 minutes</span>
                     {cooldown > 0 ? (
                       <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
                     ) : (

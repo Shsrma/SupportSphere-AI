@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect } from "react";
 import api from "../services/api";
+import { toast } from "react-hot-toast";
 import { startRegistration, startAuthentication } from "@simplewebauthn/browser";
 import { 
   auth, 
@@ -218,6 +219,21 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       setLoading(false);
       console.error("Firebase social login error:", error);
+
+      // Fallback for development if Firebase is not configured or fails on localhost
+      if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        console.warn(`[Firebase Fallback] Catching error and simulating ${providerName} login in development mode.`, error);
+        toast.success(`[Dev Mode] Firebase not configured. Simulating ${providerName} login.`, { duration: 5000 });
+        
+        const mockUid = "mock_uid_" + Math.random().toString(36).substring(2, 10);
+        const name = `Mock ${providerName} User`;
+        const email = `mock_${providerName.toLowerCase()}_${mockUid}@supportsphere.ai`;
+        const phoneNumber = "+919999999999";
+        
+        const backendResponse = await register(name, email, "", phoneNumber, "", true);
+        return backendResponse;
+      }
+
       return { success: false, error: error.message || "Social authentication failed." };
     }
   };
@@ -245,6 +261,31 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       setLoading(false);
       console.error("Firebase SMS send error:", error);
+
+      // Fallback for development if Firebase SMS is not configured or fails on localhost
+      if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        console.warn("[Firebase Fallback] Catching error and simulating SMS send in development.", error);
+        toast.success(`[Dev Mode] Firebase SMS not configured. Code is: 123456`, { duration: 10000 });
+        
+        setConfirmationResult({
+          confirm: async (code) => {
+            if (code === "123456") {
+              const mockUid = "mock_phone_uid_" + Math.random().toString(36).substring(2, 10);
+              return {
+                user: {
+                  displayName: "Mock Mobile User",
+                  phoneNumber: phoneNumber,
+                  uid: mockUid,
+                }
+              };
+            } else {
+              throw new Error("Invalid verification code. Correct mock code is 123456.");
+            }
+          }
+        });
+        return { success: true, simulated: true };
+      }
+
       return { success: false, error: error.message || "Failed to send SMS verification code." };
     }
   };

@@ -93,7 +93,7 @@ const Login = () => {
     if (result.success) {
       if (result.requires2FA) {
         setStep("2fa");
-        setCooldown(50);
+        setCooldown(60);
         setOtp("");
         setUserPhone(result.phoneNumber || "");
         toast.success("Credentials verified. Check your server console for the 2FA code!");
@@ -168,7 +168,7 @@ const Login = () => {
     setSmsSending(false);
     if (result.success) {
       setSmsSent(true);
-      setCooldown(50);
+      setCooldown(60);
       toast.success("SMS verification code sent to your phone!", { id: "sms-send" });
     } else {
       toast.error(result.error || "Failed to send SMS verification code.", { id: "sms-send" });
@@ -206,7 +206,7 @@ const Login = () => {
     if (result.success) {
       setSms2faSent(true);
       setIsSms2fa(true);
-      setCooldown(50);
+      setCooldown(60);
       toast.success("SMS verification code sent to your registered mobile number!", { id: "sms-2fa-send" });
     } else {
       toast.error(result.error || "Failed to send SMS verification code.", { id: "sms-2fa-send" });
@@ -253,7 +253,7 @@ const Login = () => {
 
   // Resend 2FA handler
   const handleResend2Fa = async () => {
-    setCooldown(50);
+    setCooldown(60);
     try {
       const response = await api.post("/auth/login", { email, password });
       if (response.data.success) {
@@ -530,7 +530,7 @@ const Login = () => {
                           />
                         </div>
                         <div className="flex justify-between items-center text-[10px]">
-                          <span className="text-[#CBD5E1]/50">SMS code expires in 50 seconds</span>
+                          <span className="text-[#CBD5E1]/50">SMS code expires in 5 minutes</span>
                           {cooldown > 0 ? (
                             <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
                           ) : (
@@ -700,7 +700,7 @@ const Login = () => {
                         />
                       </div>
                       <div className="flex justify-between items-center mt-2 text-[10px]">
-                        <span className="text-[#CBD5E1]/50">Code valid for 50s</span>
+                        <span className="text-[#CBD5E1]/50">Code valid for 5m</span>
                         {cooldown > 0 ? (
                           <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
                         ) : (
@@ -785,7 +785,7 @@ const Login = () => {
                         />
                       </div>
                       <div className="flex justify-between items-center mt-2 text-[10px]">
-                        <span className="text-[#CBD5E1]/50">SMS expires in 50 seconds</span>
+                        <span className="text-[#CBD5E1]/50">SMS expires in 5 minutes</span>
                         {cooldown > 0 ? (
                           <span className="text-[#CBD5E1]/60">Resend in {cooldown}s</span>
                         ) : (

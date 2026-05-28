@@ -11,9 +11,11 @@ const sendEmail = async ({ to, subject, html, text }) => {
     process.env.SMTP_USER &&
     process.env.SMTP_PASS;
 
+  let transporter = null;
+
   if (hasSmtp) {
     try {
-      const transporter = nodemailer.createTransport({
+      transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: parseInt(process.env.SMTP_PORT, 10),
         secure: process.env.SMTP_SECURE === "true", // true for port 465, false for other ports
@@ -22,7 +24,32 @@ const sendEmail = async ({ to, subject, html, text }) => {
           pass: process.env.SMTP_PASS,
         },
       });
+    } catch (error) {
+      console.error("❌ [Mailer Error] Failed to create SMTP transporter:", error.message);
+    }
+  }
 
+  // If no SMTP configured, try to create an Ethereal Test Account for real-world simulation
+  if (!transporter) {
+    try {
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+      console.log("📧 [Ethereal Mail] Created temporary developer test mail account.");
+    } catch (err) {
+      console.warn("⚠️ [Mailer Warning] Failed to create Ethereal account, falling back to local console simulator.");
+    }
+  }
+
+  if (transporter) {
+    try {
       const info = await transporter.sendMail({
         from: process.env.SMTP_FROM || '"SupportSphere AI" <no-reply@supportsphere.ai>',
         to,
@@ -32,9 +59,14 @@ const sendEmail = async ({ to, subject, html, text }) => {
       });
 
       console.log(`✉️ [Mail Sent] Message ID: ${info.messageId} to ${to}`);
+      
+      const testUrl = nodemailer.getTestMessageUrl(info);
+      if (testUrl) {
+        console.log(`\n🔗 [ETHEREAL EMAIL] View sent email at: ${testUrl}\n`);
+      }
       return info;
     } catch (error) {
-      console.error("❌ [Mailer Error] Failed to send email via SMTP:", error.message);
+      console.error("❌ [Mailer Error] Failed to send email:", error.message);
     }
   }
 

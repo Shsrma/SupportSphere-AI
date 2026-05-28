@@ -4,6 +4,7 @@ const AppError = require("../utils/errorUtils");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/responseHelper");
 const sendEmail = require("../services/emailService");
+const { sendSms } = require("../services/smsService");
 const jwt = require("jsonwebtoken");
 
 /**
@@ -65,8 +66,8 @@ const sendOtp = asyncHandler(async (req, res, next) => {
     otp: generatedOtp,
   });
 
-  // Log to console for development verification (50s validity)
-  console.log(`\n📨 [OTP SIGNUP LOG] Code for ${email} is: ${generatedOtp} (Valid for 50 seconds)\n`);
+  // Log to console for development verification (5 minutes validity)
+  console.log(`\n📨 [OTP SIGNUP LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)\n`);
 
   // Send email (triggers real sending or console logging fallback)
   await sendEmail({
@@ -77,10 +78,10 @@ const sendOtp = asyncHandler(async (req, res, next) => {
         <h2 style="color: #2563EB; font-weight: bold; margin-bottom: 20px;">Welcome to SupportSphere AI</h2>
         <p style="font-size: 14px; color: #CBD5E1;">Thank you for registering. Use the 6-digit verification code below to verify your email address:</p>
         <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 30px 0; color: #22D3EE;">${generatedOtp}</div>
-        <p style="font-size: 11px; color: #64748B;">This code is valid for exactly 50 seconds and cannot be reused.</p>
+        <p style="font-size: 11px; color: #64748B;">This code is valid for exactly 5 minutes and cannot be reused.</p>
       </div>
     `,
-    text: `Your SupportSphere AI verification code is: ${generatedOtp}. It is valid for exactly 50 seconds.`
+    text: `Your SupportSphere AI verification code is: ${generatedOtp}. It is valid for exactly 5 minutes.`
   });
 
   sendSuccess(res, "Verification code sent successfully. Check your email or local server console!", { email });
@@ -99,8 +100,8 @@ const registerUser = asyncHandler(async (req, res, next) => {
   // 1. Verify OTP first (only if not OAuth)
   if (!isOAuth) {
     const otpRecord = await Otp.findOne({ email }).sort({ createdAt: -1 });
-    if (!otpRecord || otpRecord.otp !== otp) {
-      return next(new AppError("Invalid or expired verification code (50s limit)", 400));
+    if (!otpRecord || otpRecord.otp !== otp || otpRecord.expiresAt < new Date()) {
+      return next(new AppError("Invalid or expired verification code (5m limit)", 400));
     }
   }
 
@@ -189,7 +190,7 @@ const loginUser = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid credentials", 401));
   }
 
-  // Generate 2FA code (50s validity)
+  // Generate 2FA code (5m validity)
   const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
   // Save to OTP database
@@ -200,7 +201,7 @@ const loginUser = asyncHandler(async (req, res, next) => {
   });
 
   // Log to console for local testing
-  console.log(`\n📨 [OTP 2FA LOGIN LOG] Code for ${email} is: ${generatedOtp} (Valid for 50 seconds)\n`);
+  console.log(`\n📨 [OTP 2FA LOGIN LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)\n`);
 
   // Send 2FA email
   await sendEmail({
@@ -211,11 +212,19 @@ const loginUser = asyncHandler(async (req, res, next) => {
         <h2 style="color: #7C3AED; font-weight: bold; margin-bottom: 20px;">2-Factor Security Challenge</h2>
         <p style="font-size: 14px; color: #CBD5E1;">A sign-in request was made to your account. Use this security verification code to complete your login:</p>
         <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 30px 0; color: #C084FC;">${generatedOtp}</div>
-        <p style="font-size: 11px; color: #64748B;">This code is valid for exactly 50 seconds. If you did not initiate this login request, please change your password immediately.</p>
+        <p style="font-size: 11px; color: #64748B;">This code is valid for exactly 5 minutes. If you did not initiate this login request, please change your password immediately.</p>
       </div>
     `,
-    text: `Your SupportSphere AI 2-Factor Authentication code is: ${generatedOtp}. It is valid for exactly 50 seconds.`
+    text: `Your SupportSphere AI 2-Factor Authentication code is: ${generatedOtp}. It is valid for exactly 5 minutes.`
   });
+
+  // Send 2FA SMS if phone number exists
+  if (user.phoneNumber) {
+    await sendSms({
+      to: user.phoneNumber,
+      body: `Your SupportSphere AI 2-Factor Authentication code is: ${generatedOtp}. It is valid for exactly 5 minutes.`
+    });
+  }
 
   sendSuccess(res, "Credentials verified. Two-factor authentication code sent to email or local console.", {
     requires2FA: true,
@@ -236,8 +245,8 @@ const verify2Fa = asyncHandler(async (req, res, next) => {
 
   // 1. Verify 2FA OTP code
   const otpRecord = await Otp.findOne({ email }).sort({ createdAt: -1 });
-  if (!otpRecord || otpRecord.otp !== otp) {
-    return next(new AppError("Invalid or expired 2FA verification code (50s limit)", 400));
+  if (!otpRecord || otpRecord.otp !== otp || otpRecord.expiresAt < new Date()) {
+    return next(new AppError("Invalid or expired 2FA verification code (5m limit)", 400));
   }
 
   // 2. Fetch User profile
@@ -288,7 +297,7 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
     return next(new AppError("No account found with this email address", 404));
   }
 
-  // Generate 6-digit random code (50s validity)
+  // Generate 6-digit random code (5m validity)
   const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
   // Store in Otp database
@@ -299,7 +308,7 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
   });
 
   // Log to console for development verification
-  console.log(`\n📨 [OTP PASSWORD RESET LOG] Code for ${email} is: ${generatedOtp} (Valid for 50 seconds)\n`);
+  console.log(`\n📨 [OTP PASSWORD RESET LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)\n`);
 
   // Send reset email
   await sendEmail({
@@ -310,11 +319,19 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
         <h2 style="color: #EF4444; font-weight: bold; margin-bottom: 20px;">Password Reset Request</h2>
         <p style="font-size: 14px; color: #CBD5E1;">We received a request to reset your password. Use the following code to complete the recovery process:</p>
         <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 30px 0; color: #FCA5A5;">${generatedOtp}</div>
-        <p style="font-size: 11px; color: #64748B;">This code is valid for exactly 50 seconds. If you did not request a password reset, you can safely ignore this email.</p>
+        <p style="font-size: 11px; color: #64748B;">This code is valid for exactly 5 minutes. If you did not request a password reset, you can safely ignore this email.</p>
       </div>
     `,
-    text: `Your SupportSphere AI password recovery code is: ${generatedOtp}. It is valid for exactly 50 seconds.`
+    text: `Your SupportSphere AI password recovery code is: ${generatedOtp}. It is valid for exactly 5 minutes.`
   });
+
+  // Send reset SMS if phone number exists
+  if (user.phoneNumber) {
+    await sendSms({
+      to: user.phoneNumber,
+      body: `Your SupportSphere AI password recovery code is: ${generatedOtp}. It is valid for exactly 5 minutes.`
+    });
+  }
 
   sendSuccess(res, "Password reset verification code sent successfully.", { email });
 });
@@ -331,8 +348,8 @@ const resetPassword = asyncHandler(async (req, res, next) => {
 
   // 1. Verify OTP code
   const otpRecord = await Otp.findOne({ email }).sort({ createdAt: -1 });
-  if (!otpRecord || otpRecord.otp !== otp) {
-    return next(new AppError("Invalid or expired verification code (50s limit)", 400));
+  if (!otpRecord || otpRecord.otp !== otp || otpRecord.expiresAt < new Date()) {
+    return next(new AppError("Invalid or expired verification code (5m limit)", 400));
   }
 
   // 2. Fetch User profile
