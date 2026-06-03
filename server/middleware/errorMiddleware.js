@@ -1,5 +1,6 @@
 const AppError = require("../utils/errorUtils");
 const { sendError } = require("../utils/responseHelper");
+const logger = require("../utils/logger");
 
 const handleCastErrorDB = (err) => {
   const message = `Invalid ${err.path}: ${err.value}.`;
@@ -39,7 +40,7 @@ const sendErrorProd = (err, res) => {
     sendError(res, err.message, err.statusCode);
   } else {
     // Programming or other unknown error: don't leak error details
-    console.error("ERROR 💥", err);
+    logger.error(`Unhandled Error 💥: ${err.message}`, { stack: err.stack, error: err });
     sendError(res, "Something went very wrong!", 500);
   }
 };

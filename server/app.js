@@ -3,6 +3,8 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
+const morgan = require("morgan");
+const logger = require("./utils/logger");
 
 const authRoutes = require("./routes/authRoutes");
 const ticketRoutes = require("./routes/ticketRoutes");
@@ -15,6 +17,16 @@ const app = express();
 app.use(helmet());
 
 app.use(cors());
+
+// Configure morgan HTTP request logging streamed through Winston logger
+const morganFormat = process.env.NODE_ENV === "production" ? "combined" : "dev";
+app.use(
+  morgan(morganFormat, {
+    stream: {
+      write: (message) => logger.info(message.trim()),
+    },
+  })
+);
 
 app.use(express.json());
 

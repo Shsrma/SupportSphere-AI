@@ -15,7 +15,6 @@ const {
 
 const {
   createTicketValidator,
-  updateTicketStatusValidator,
   createCommentValidator,
 } = require("../validators/ticketValidator");
 

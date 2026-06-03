@@ -6,6 +6,7 @@ const { sendSuccess } = require("../utils/responseHelper");
 const sendEmail = require("../services/emailService");
 const { sendSms } = require("../services/smsService");
 const jwt = require("jsonwebtoken");
+const logger = require("../utils/logger");
 
 /**
  * Generate a JWT token containing userId, role, and email.
@@ -66,8 +67,8 @@ const sendOtp = asyncHandler(async (req, res, next) => {
     otp: generatedOtp,
   });
 
-  // Log to console for development verification (5 minutes validity)
-  console.log(`\n📨 [OTP SIGNUP LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)\n`);
+  // Log to console/file for development verification (5 minutes validity)
+  logger.info(`📨 [OTP SIGNUP LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)`);
 
   // Send email (triggers real sending or console logging fallback)
   await sendEmail({
@@ -200,8 +201,8 @@ const loginUser = asyncHandler(async (req, res, next) => {
     otp: generatedOtp,
   });
 
-  // Log to console for local testing
-  console.log(`\n📨 [OTP 2FA LOGIN LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)\n`);
+  // Log to console/file for local testing
+  logger.info(`📨 [OTP 2FA LOGIN LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)`);
 
   // Send 2FA email
   await sendEmail({
@@ -307,8 +308,8 @@ const forgotPassword = asyncHandler(async (req, res, next) => {
     otp: generatedOtp,
   });
 
-  // Log to console for development verification
-  console.log(`\n📨 [OTP PASSWORD RESET LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)\n`);
+  // Log to console/file for development verification
+  logger.info(`📨 [OTP PASSWORD RESET LOG] Code for ${email} is: ${generatedOtp} (Valid for 5 minutes)`);
 
   // Send reset email
   await sendEmail({

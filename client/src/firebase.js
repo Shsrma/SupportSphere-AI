@@ -10,13 +10,13 @@ import {
 } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCTMczgYUGktJP40d4Qc01ioNoTbTkSv-c",
-  authDomain: "authentication-system-4b59d.firebaseapp.com",
-  projectId: "authentication-system-4b59d",
-  storageBucket: "authentication-system-4b59d.firebasestorage.app",
-  messagingSenderId: "979409146957",
-  appId: "1:979409146957:web:fe42f12cde2df3e5143804",
-  measurementId: "G-YH3JPVZVHR"
+  apiKey: "AIzaSyBlevqTD5nc28crWpCbBknLPGcRYLVTEHk",
+  authDomain: "supportsphere-ai-35f58.firebaseapp.com",
+  projectId: "supportsphere-ai-35f58",
+  storageBucket: "supportsphere-ai-35f58.firebasestorage.app",
+  messagingSenderId: "153509169534",
+  appId: "1:153509169534:web:f9157e44b66f67a3d18b2f",
+  measurementId: "G-WV85W9ZW6L"
 };
 
 const app = initializeApp(firebaseConfig);
