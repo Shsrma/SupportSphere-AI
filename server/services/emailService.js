@@ -5,69 +5,96 @@ const nodemailer = require("nodemailer");
  * Fallback representation outputs email formatted to server console when SMTP configs are absent.
  */
 const sendEmail = async ({ to, subject, html, text }) => {
-  const hasSmtp =
-    process.env.SMTP_HOST &&
-    process.env.SMTP_PORT &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS;
-
   let transporter = null;
+  let sentInfo = null;
 
-  if (hasSmtp) {
+  // 1. Try Gmail SMTP
+  if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
     try {
       transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT, 10),
-        secure: process.env.SMTP_SECURE === "true", // true for port 465, false for other ports
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-    } catch (error) {
-      console.error("❌ [Mailer Error] Failed to create SMTP transporter:", error.message);
-    }
-  }
-
-  // If no SMTP configured, try to create an Ethereal Test Account for real-world simulation
-  if (!transporter) {
-    try {
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: "smtp.ethereal.email",
+        host: "smtp.gmail.com",
         port: 587,
         secure: false,
         auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_PASS,
         },
       });
-      console.log("📧 [Ethereal Mail] Created temporary developer test mail account.");
-    } catch (err) {
-      console.warn("⚠️ [Mailer Warning] Failed to create Ethereal account, falling back to local console simulator.");
-    }
-  }
 
-  if (transporter) {
-    try {
-      const info = await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"SupportSphere AI" <no-reply@supportsphere.ai>',
+      sentInfo = await transporter.sendMail({
+        from: `"SupportSphere AI" <${process.env.GMAIL_USER}>`,
         to,
         subject,
         text: text || subject,
         html,
       });
 
-      console.log(`✉️ [Mail Sent] Message ID: ${info.messageId} to ${to}`);
-      
-      const testUrl = nodemailer.getTestMessageUrl(info);
-      if (testUrl) {
-        console.log(`\n🔗 [ETHEREAL EMAIL] View sent email at: ${testUrl}\n`);
-      }
-      return info;
+      console.log(`✉️ [Mail Sent via Gmail] Message ID: ${sentInfo.messageId} to ${to}`);
+      return sentInfo;
     } catch (error) {
-      console.error("❌ [Mailer Error] Failed to send email:", error.message);
+      console.error("❌ [Gmail SMTP Error] Failed to send email via Gmail:", error.message);
     }
+  }
+
+  // 2. Try Outlook SMTP (as fallback or if Gmail not configured)
+  if (process.env.OUTLOOK_USER && process.env.OUTLOOK_PASS) {
+    try {
+      transporter = nodemailer.createTransport({
+        host: "smtp-mail.outlook.com",
+        port: 587,
+        secure: false,
+        auth: {
+          user: process.env.OUTLOOK_USER,
+          pass: process.env.OUTLOOK_PASS,
+        },
+      });
+
+      sentInfo = await transporter.sendMail({
+        from: `"SupportSphere AI" <${process.env.OUTLOOK_USER}>`,
+        to,
+        subject,
+        text: text || subject,
+        html,
+      });
+
+      console.log(`✉️ [Mail Sent via Outlook] Message ID: ${sentInfo.messageId} to ${to}`);
+      return sentInfo;
+    } catch (error) {
+      console.error("❌ [Outlook SMTP Error] Failed to send email via Outlook:", error.message);
+    }
+  }
+
+  // 3. Try Ethereal Test Account (if both SMTP providers are unconfigured or failed)
+  try {
+    const testAccount = await nodemailer.createTestAccount();
+    transporter = nodemailer.createTransport({
+      host: "smtp.ethereal.email",
+      port: 587,
+      secure: false,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass,
+      },
+    });
+    
+    sentInfo = await transporter.sendMail({
+      from: '"SupportSphere AI" <no-reply@supportsphere.ai>',
+      to,
+      subject,
+      text: text || subject,
+      html,
+    });
+
+    console.log(`📧 [Ethereal Mail] Created temporary developer test account and sent email.`);
+    console.log(`✉️ [Mail Sent via Ethereal] Message ID: ${sentInfo.messageId} to ${to}`);
+    
+    const testUrl = nodemailer.getTestMessageUrl(sentInfo);
+    if (testUrl) {
+      console.log(`\n🔗 [ETHEREAL EMAIL] View sent email at: ${testUrl}\n`);
+    }
+    return sentInfo;
+  } catch (err) {
+    console.warn("⚠️ [Mailer Warning] Failed to create Ethereal account, falling back to local console simulator.");
   }
 
   // Beautiful Console Fallback box for local developer visibility
